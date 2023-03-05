@@ -1,18 +1,21 @@
-from conans import ConanFile, CMake, tools
+from conan import ConanFile
+from conan.tools.cmake import CMakeToolchain, CMake, cmake_layout, CMakeDeps
+from conan.tools.files import get, rmdir, patch, save
 import os
 import textwrap
 
-required_conan_version = ">=1.43.0"
+required_conan_version = ">=2.0.0"
 
 
 class RaylibConan(ConanFile):
     name = "raylib"
+    version = "4.0.0"
     description = "raylib is a simple and easy-to-use library to enjoy videogames programming."
     license = "Zlib"
     url = "https://github.com/conan-io/conan-center-index"
     homepage = "https://www.raylib.com/"
     topics = ("raylib", "gamedev")
-
+    
     settings = "os", "arch", "compiler", "build_type"
     options = {
         "shared": [True, False],
@@ -28,7 +31,7 @@ class RaylibConan(ConanFile):
     }
 
     exports_sources = ["CMakeLists.txt","patches/**"]
-    generators = "cmake", "cmake_find_package_multi"
+    #generators = "CMakeToolchain", "CMakeDeps"
     _cmake = None
 
     @property
@@ -45,13 +48,23 @@ class RaylibConan(ConanFile):
 
     def config_options(self):
         if self.settings.os == "Windows":
-            del self.options.fPIC
+            self.options.rm_safe("fPIC")
 
     def configure(self):
         if self.options.shared:
-            del self.options.fPIC
-        del self.settings.compiler.libcxx
-        del self.settings.compiler.cppstd
+            self.options.rm_safe("fPIC")
+        #self.settings.rm_safe("compiler.libcxx")
+        #self.settings.rm_safe("compiler.cppstd")
+
+    def layout(self):
+        cmake_layout(self)
+
+    def generate(self):
+        deps = CMakeDeps(self)
+        deps.generate()
+        tc = CMakeToolchain(self)
+        tc.generate()
+
 
     def requirements(self):
         
@@ -63,12 +76,9 @@ class RaylibConan(ConanFile):
         
         if self.settings.os == "Linux":
             self.requires("xorg/system")
- 
+
     def source(self):
-        tools.get(**self.conan_data["sources"][self.version],
-                  destination=self._source_subfolder, strip_root=True)
-
-
+        get(self, **self.conan_data["sources"][self.version], strip_root=True)
 
     def _configure_cmake(self):
         if self._cmake:
@@ -89,23 +99,30 @@ class RaylibConan(ConanFile):
         return self._cmake
 
     def build(self):
-        for patch in self.conan_data.get("patches", {}).get(self.version, []):
-            tools.patch(**patch)
-        cmake = self._configure_cmake()
+        #for patch in self.conan_data.get("patches", {}).get(self.version, []):
+        #    patch(**patch)
+        #cmake = self._configure_cmake()
+        cmake = CMake(self)
+        cmake.configure()
         cmake.build()
 
     def package(self):
-        self.copy("LICENSE", dst="licenses", src=self._source_subfolder)
-        cmake = self._configure_cmake()
+        cmake = CMake(self)
         cmake.install()
-        tools.rmdir(os.path.join(self.package_folder, "lib", "cmake"))
-        tools.rmdir(os.path.join(self.package_folder, "lib", "pkgconfig"))
+        #self.copy("LICENSE", dst="licenses", src=self._source_subfolder)
+        #cmake = self._configure_cmake()
+        #cmake.install()
+        #rmdir(os.path.join(self.package_folder, "lib", "cmake"))
+        #rmdir(os.path.join(self.package_folder, "lib", "pkgconfig"))
 
         # TODO: to remove in conan v2 once cmake_find_package* generators removed
-        self._create_cmake_module_alias_targets(
-            os.path.join(self.package_folder, self._module_file_rel_path),
-            {"raylib": "raylib::raylib"}
-        )
+        #self._create_cmake_module_alias_targets(
+        #    os.path.join(self.package_folder, self._module_file_rel_path),
+        #    {"raylib": "raylib::raylib"}
+        #)
+
+    def package_info(self):
+        self.cpp_info.libs = ["raylib"]
 
     @staticmethod
     def _create_cmake_module_alias_targets(module_file, targets):
@@ -117,7 +134,7 @@ class RaylibConan(ConanFile):
                     set_property(TARGET {alias} PROPERTY INTERFACE_LINK_LIBRARIES {aliased})
                 endif()
             """.format(alias=alias, aliased=aliased))
-        tools.save(module_file, content)
+        save(module_file, content)
 
     @property
     def _module_subfolder(self):
@@ -128,7 +145,7 @@ class RaylibConan(ConanFile):
         return os.path.join(self._module_subfolder,
                             "conan-official-{}-targets.cmake".format(self.name))
 
-    def package_info(self):
+    def __package_info(self):
         self.cpp_info.set_property("cmake_file_name", "raylib")
         self.cpp_info.set_property("cmake_target_name", "raylib")
         self.cpp_info.set_property("pkg_config_name", "raylib")
